@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ReDuX</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="bg"></div>
+
+  <div class="modal-backdrop open" id="authModal">
+    <div class="modal auth-modal">
+      <div class="auth-brand">ReDuX</div>
+
+      <div class="auth-switch">
+        <button class="auth-tab active" data-auth="login">Войти</button>
+        <button class="auth-tab" data-auth="register">Регистрация</button>
+      </div>
+
+      <section class="auth-screen active" id="loginScreen">
+        <span class="eyebrow">С ВОЗВРАЩЕНИЕМ</span><h2>Вход в аккаунт</h2>
+        <p class="auth-description">Введи логин и пароль, чтобы войти.</p>
+        <label>Логин<input id="loginUsername" placeholder="Например, Worixy" autocomplete="username"></label>
+        <label>Пароль<input id="loginPassword" type="password" placeholder="Пароль" autocomplete="current-password"></label>
+        <div class="auth-error" id="loginError"></div>
+        <button class="auth-submit" id="loginContinue">Войти</button>
+        <button class="auth-back guest-login" id="guestLogin">Продолжить как гость</button>
+      </section>
+
+      <section class="auth-screen" id="registerScreen">
+        <span class="eyebrow">НОВЫЙ АККАУНТ</span><h2>Регистрация</h2>
+        <p class="auth-description">Создай аккаунт ReDuX.</p>
+        <label>Имя аккаунта<input id="registerName" placeholder="Например, Константин"></label>
+        <label>Логин<input id="registerUsername" placeholder="Например, Worixy" autocomplete="username"></label>
+        <label>Пароль<input id="registerPassword" type="password" placeholder="Пароль" autocomplete="new-password"></label>
+        <label>Повтор пароля<input id="registerPassword2" type="password" placeholder="Повтори пароль" autocomplete="new-password"></label>
+        <div class="auth-error" id="registerError"></div>
+        <button class="auth-submit" id="registerContinue">Создать аккаунт</button>
+      </section>
+
+      <section class="auth-screen code-screen" id="codeScreen"></section>
+
+      <div class="auth-footer">Продолжая, ты принимаешь правила проекта ReDuX.</div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="profileModal">
+    <div class="modal profile-modal">
+      <button class="modal-close" data-close="profileModal">×</button>
+      <div class="modal-heading">
+        <span class="eyebrow">АККАУНТ</span>
+        <h2>Настройки профиля</h2>
+        <p>Измени данные, которые будут отображаться в лаунчере.</p>
+      </div>
+      <div class="profile-editor">
+        <div class="avatar-editor">
+          <div class="profile-avatar large" id="modalAvatar">C</div>
+          <label class="upload-avatar">
+            Изменить аватар
+            <input type="file" id="avatarInput" accept="image/*">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>Логин<input id="loginInput" maxlength="24"></label>
+          <label>Никнейм<input id="nicknameInput" maxlength="24"></label>
+          <label>Пароль<input id="passwordInput" type="password" maxlength="64"></label>
+          <label>О себе<textarea id="bioInput" maxlength="120" rows="3"></textarea></label>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" data-close="profileModal">Отмена</button>
+        <button class="btn primary" id="saveProfile">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="adminModal">
+    <div class="modal admin-modal">
+      <button class="modal-close" data-close="adminModal">×</button>
+      <div class="modal-heading">
+        <span class="eyebrow">ADMIN PANEL</span>
+        <h2>Панель администратора</h2>
+        <p>Управление контентом лаунчера.</p>
+      </div>
+      <div class="admin-tabs">
+        <button class="admin-tab admin-president-only active" data-admin-tab="updates">Обновления</button>
+        <button class="admin-tab" data-admin-tab="mods">Redux</button>
+        <button class="admin-tab admin-president-only" data-admin-tab="users">Пользователи</button>
+        <button class="admin-tab admin-president-only" data-admin-tab="bans">Баны</button>
+      </div>
+
+      <section class="admin-section active" id="adminUpdatesSection">
+        <div class="admin-form">
+          <label>Версия приложения<input id="adminVersion" value="v1.0.7"></label>
+          <label>Заголовок обновления<input id="adminUpdateTitle" value="Новое обновление"></label>
+          <label>Добавлено<textarea id="adminAdded" rows="3"></textarea></label>
+          <label>Убрано<textarea id="adminRemoved" rows="3"></textarea></label>
+          <label>Исправлено<textarea id="adminFixed" rows="3"></textarea></label>
+        </div>
+        <div class="modal-actions">
+          <span class="save-status" id="adminStatus"></span>
+          <button class="btn primary" id="saveAdminUpdate">Опубликовать обновление</button>
+        </div>
+      </section>
+
+      <section class="admin-section" id="adminModsSection">
+        <div class="mod-upload-grid"><div class="mod-icon-preview" id="modIconPreview">REDUX</div>
+          <div class="admin-form mod-form">
+            <label>Иконка Redux<input id="modIconInput" type="file" accept="image/png,image/jpeg,image/webp"></label>
+            <label>Название Redux<input id="modName" placeholder="Например, ReDuX Pack"></label>
+            <label>Короткое описание<textarea id="modDescription" rows="3" placeholder="Коротко о Redux"></textarea></label>
+            <label>Подробное описание<textarea id="modLongDescription" rows="6" placeholder="Полное описание, возможности, изменения, требования..."></textarea></label>
+            <label>Видео<input id="modVideoUrl" placeholder="https://www.youtube.com/watch?v=... или прямая ссылка"></label>
+            <label>Ссылка на скачивание (Яндекс Диск)<input id="modDownloadUrl" placeholder="https://disk.yandex.ru/..." required></label>
+          </div></div>
+        <div class="modal-actions"><span class="save-status" id="modStatus"></span><button class="btn primary" id="publishMod">Выложить Redux</button></div>
+        <div class="admin-content-list" id="adminModsList"></div>
+      </section>
+
+      <section class="admin-section" id="adminUsersSection">
+        <div class="admin-form">
+          <label>Поиск пользователя<input id="adminUserSearch" placeholder="Логин или никнейм"></label>
+        </div>
+        <div class="admin-content-list" id="adminUsersList"></div>
+      </section>
+
+      <section class="admin-section" id="adminBansSection">
+        <div class="admin-content-list" id="adminBansList"></div>
+      </section>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="supportModal">
+    <div class="modal wide-modal">
+      <button class="modal-close" data-close="supportModal">×</button>
+      <div class="modal-heading"><span class="eyebrow">ПОДДЕРЖКА</span><h2>Обращения</h2><p>Создавай обращения и общайся с командой ReDuX.</p></div>
+      <div class="support-layout support-modern"><div class="support-list-panel"><div class="panel-label">МОИ ОБРАЩЕНИЯ</div><div class="support-list" id="supportList"></div><button class="btn primary support-new-btn" id="newSupport">+ Новое обращение</button></div><div class="support-chat support-conversation"><div id="supportHeader" class="chat-header"><div><span class="eyebrow">ОБРАЩЕНИЕ</span><strong>Выбери обращение</strong></div></div><div id="supportMessages" class="chat-messages"></div><div class="chat-compose"><textarea id="supportInput" rows="2" placeholder="Написать сообщение..."></textarea><button class="btn primary" id="supportSend">Отправить</button><button class="btn ghost" id="supportClose">Закрыть</button></div></div></div>
+      <div class="support-new-form" id="supportNewForm" hidden><div class="support-form-title">Новое обращение</div><input id="supportTitleInput" class="chat-user-search" placeholder="Название обращения"><textarea id="supportTextInput" rows="5" placeholder="Опиши проблему или вопрос..."></textarea><label class="file-pill">📎 Добавить фото<input id="supportPhotoInput" type="file" accept="image/png,image/jpeg,image/webp"></label><span class="file-name" id="supportPhotoName"></span><div class="modal-actions"><button class="btn ghost" id="cancelSupport">Отмена</button><button class="btn primary" id="createSupport">Создать обращение</button></div></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="chatModal">
+    <div class="modal wide-modal">
+      <button class="modal-close" data-close="chatModal">×</button>
+      <div class="modal-heading"><span class="eyebrow">СООБЩЕНИЯ</span><h2>Чат</h2><p>Найди пользователя по логину и начни переписку.</p></div>
+      <div class="chat-search-wrap"><input id="chatUserSearch" class="chat-user-search" type="search" placeholder="Поиск по логину..."></div>
+      <div class="chat-layout"><div class="support-list" id="chatUsers"></div><div class="support-chat"><div id="chatHeader" class="chat-header">Выбери пользователя</div><div id="chatMessages" class="chat-messages"></div><div class="chat-compose"><textarea id="chatInput" rows="2" placeholder="Сообщение"></textarea><button class="btn primary" id="chatSend">Отправить</button></div></div></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="reduxDetailModal"><div class="modal redux-detail-modal"><button class="modal-close" data-close="reduxDetailModal">×</button>
+    <div class="modal-heading"><span class="eyebrow">REDUX</span><h2 id="reduxDetailName">Redux</h2><p id="reduxDetailShort"></p></div>
+    <div id="reduxDetailVideo" class="redux-video-wrap"></div><div class="redux-detail-text" id="reduxDetailLong"></div>
+    <div class="modal-actions"><button class="btn ghost" data-close="reduxDetailModal">Закрыть</button><button class="btn primary" id="reduxDetailDownload">Скачать</button></div>
+  </div></div>
+
+  <main class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-title">ReDuX</div>
+        <div class="brand-subtitle">ROLEPLAY PROJECT</div>
+      </div>
+
+      <div class="user-card">
+        <div class="avatar">C</div>
+        <div>
+          <div class="username" id="sidebarNickname">cutrix.aep</div>
+          <div class="role" id="sidebarRole">Администратор</div>
+        </div>
+        <span class="online"></span>
+      </div>
+
+      <nav class="nav">
+        <button class="nav-item active" data-page="home">
+          <span class="icon">⌂</span><span>Главная</span>
+        </button>
+        <button class="nav-item" data-page="mods">
+          <span class="icon">◈</span><span>Redux</span>
+        </button>
+        <button class="nav-item auth-only-nav" id="openChat"><span class="icon">✉</span><span>Чат</span></button>
+        <button class="nav-item auth-only-nav" id="openSupport"><span class="icon">?</span><span>Поддержка</span></button>
+        <button class="nav-item" data-page="settings">
+          <span class="icon">⚙</span><span>Настройки</span>
+        </button>
+        <button class="nav-item" data-page="profile">
+          <span class="icon">♙</span><span>Профиль</span>
+        </button>
+        <button class="nav-item admin-nav" id="openAdmin">
+          <span class="icon">◆</span><span>Админ-панель</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <a class="discord-link" href="https://discord.com/invite/hdJKWZwEvV" target="_blank" rel="noopener"><span class="discord-icon">◉</span> Discord</a>
+        <button class="logout" id="sidebarLogout">↪ &nbsp; Выйти</button>
+      </div>
+    </aside>
+
+    <section class="content">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">ReDuX</div>
+          <h1 id="pageTitle">Главная</h1>
+        </div>
+        <div class="top-user">
+          <div class="small-avatar" id="topAvatar">C</div>
+          <div><b id="topNickname">cutrix.aep</b><span id="topLogin">@cutrix</span></div>
+        </div>
+      </header>
+
+      <div class="page active" id="home">
+        <section class="hero">
+          <div class="hero-overlay"></div>
+          <div class="hero-content">
+            <span class="badge">ReDuX</span>
+            <h2>ReDuX</h2>
+          </div>
+        </section>
+
+        <section class="factions">
+          <article class="faction gov">
+            <div class="faction-bg"></div>
+            <div class="faction-content">
+              <div class="emblem">✦</div>
+              <h3>Гос</h3>
+              
+              <div class="faction-lock"><span>🔒</span> В РАЗРАБОТКЕ</div>
+            </div>
+          </article>
+          <article class="faction crime">
+            <div class="faction-bg"></div>
+            <div class="faction-content">
+              <div class="emblem">◈</div>
+              <h3>Крайм</h3>
+              
+              <div class="faction-lock"><span>🔒</span> В РАЗРАБОТКЕ</div>
+            </div>
+          </article>
+        </section>
+      </div>
+
+      <div class="page" id="mods">
+        <div class="section-card">
+          <div class="section-heading">
+            <div><span class="eyebrow">КЛИЕНТ</span><h2>Redux</h2></div>
+            <span class="muted" id="modsHint">Модификации проекта</span>
+          </div>
+          <div class="guest-lock" id="guestModsLock">
+            <div class="empty-icon">⌁</div>
+            <h3>Режим гостя</h3>
+            <p>Гость может просматривать лаунчер, но скачивание модов недоступно.</p>
+          </div>
+          <div class="mods-grid" id="modsGrid"></div>
+        </div>
+      </div>
+
+      <div class="page" id="settings">
+        <div class="section-card">
+          <div class="section-heading">
+            <div><span class="eyebrow">ПРИЛОЖЕНИЕ</span><h2>Настройки</h2></div>
+          </div>
+          <div class="settings-list">
+            <div class="settings-locked-card"><div class="settings-lock-icon">🔒</div><div><h3>В разработке</h3><p>Настройки приложения временно недоступны.</p></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="profile">
+        <div class="section-card account-card">
+          <div class="profile-cover"></div>
+          <div class="profile-head profile-head-new">
+            <div class="profile-avatar" id="profileAvatar">C</div>
+            <div class="profile-main-info">
+              <span class="eyebrow">ЛИЧНЫЙ ПРОФИЛЬ</span>
+              <h2 id="profileNickname">cutrix.aep</h2>
+              <p>@<span id="profileLogin">cutrix</span> · <span id="profileRole">Администратор</span></p>
+            </div>
+            
+          </div>
+
+          <div class="account-badges">
+            <span class="account-badge admin" id="adminBadge">ADMIN</span>
+          </div>
+
+          <div class="profile-info-grid">
+            <div class="info-box">
+              <span>Имя аккаунта</span>
+              <b id="profileName">Константин</b>
+            </div>
+            <div class="info-box">
+              <span>Логин</span>
+              <b id="profileUsername">@cutrix</b>
+            </div>
+          </div>
+
+          <div class="profile-about">
+            <div class="about-heading"><span>О себе</span><small>ПУБЛИЧНАЯ ИНФОРМАЦИЯ</small></div>
+            <p id="profileBio">Администратор проекта ReDuX.</p>
+          </div>
+
+          <div class="account-actions"></div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="right-panel">
+      <div class="right-title">
+        <div>
+          <span class="eyebrow">ReDuX</span>
+          <h2>Информация</h2>
+        </div>
+      </div>
+      <div id="rightInfo"></div>
+    </aside>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
