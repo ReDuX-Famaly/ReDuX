@@ -46,8 +46,61 @@ async function sendRemoteMessage(other,text){
 }
 
 
+let cloudReady=false;
+let cloudSyncing=false;
+const CLOUD_KEYS=[USERS_KEY,MODS_KEY,UPDATES_KEY,BANS_KEY,SUPPORT_KEY];
 function load(k, fallback=null){try{const v=localStorage.getItem(k);return v?JSON.parse(v):fallback}catch{return fallback}}
-function save(k,v){localStorage.setItem(k,JSON.stringify(v));}
+function save(k,v){
+  localStorage.setItem(k,JSON.stringify(v));
+  if(cloudReady && CLOUD_KEYS.includes(k)) syncCloudState(k,v);
+}
+async function syncCloudState(key,value){
+  if(!initRealtime()||cloudSyncing)return;
+  try{await sb.from('app_state').upsert({key,data:value,updated_at:new Date().toISOString()},{onConflict:'key'});}catch(e){console.warn('ReDuX cloud sync:',e)}
+}
+async function uploadAsset(file,folder){
+  if(!initRealtime()||!file)return '';
+  try{
+    const safe=(file.name||'file').replace(/[^a-zA-Z0-9._-]/g,'_');
+    const path=`${folder}/${normLogin(user.login)}-${Date.now()}-${safe}`;
+    const {error}=await sb.storage.from('redux-assets').upload(path,file,{upsert:false,contentType:file.type||'application/octet-stream'});
+    if(error) throw error;
+    const {data}=sb.storage.from('redux-assets').getPublicUrl(path);
+    return data?.publicUrl||'';
+  }catch(e){console.warn('ReDuX asset upload:',e);return ''}
+}
+async function hydrateCloudState(){
+  if(!initRealtime())return;
+  try{
+    const {data,error}=await sb.from('app_state').select('key,data');
+    if(error) throw error;
+    const remoteKeys=new Set((data||[]).map(r=>r.key));
+    cloudSyncing=true;
+    (data||[]).forEach(r=>{if(CLOUD_KEYS.includes(r.key)) localStorage.setItem(r.key,JSON.stringify(r.data));});
+    cloudSyncing=false;
+    cloudReady=true;
+    const users=getUsers();
+    if(!users.worixy){users.worixy={name:'Worixy',login:'Worixy',nickname:'Worixy',password:'Worixy123',bio:'',role:'Президент',admin:true,guest:false,avatar:''};localStorage.setItem(USERS_KEY,JSON.stringify(users));}
+    // First launch: migrate the existing local collections to the shared database.
+    for(const [k,v] of [[USERS_KEY,getUsers()],[MODS_KEY,getMods()],[UPDATES_KEY,getUpdates()],[BANS_KEY,getBans()],[SUPPORT_KEY,getTickets()]]){
+      if(!remoteKeys.has(k)) await syncCloudState(k,v);
+    }
+    const sess=load(SESSION_KEY,null);
+    if(sess&&!sess.guest){const u=getUsers()[normLogin(sess.login)];if(u&&!u.banned){user={...u,guest:false};save(USER_KEY,user)}}
+    applyUser();
+  }catch(e){cloudReady=false;console.warn('ReDuX cloud bootstrap:',e)}
+}
+function startCloudRealtime(){
+  if(!initRealtime())return;
+  const channel=sb.channel('redux-global-state')
+    .on('postgres_changes',{event:'*',schema:'public',table:'app_state'},payload=>{
+      const row=payload.new; if(!row||!CLOUD_KEYS.includes(row.key))return;
+      cloudSyncing=true;localStorage.setItem(row.key,JSON.stringify(row.data));cloudSyncing=false;
+      if(row.key===USERS_KEY){const u=getUsers()[normLogin(user.login)];if(u&&!user.guest){user={...u,guest:false};localStorage.setItem(USER_KEY,JSON.stringify(user));}}
+      renderMods();renderUpdates();renderAdminUsers();renderAdminBans();renderSupport();
+    }).subscribe();
+  window.reduxCloudChannel=channel;
+}
 function normLogin(v){return String(v||'').trim().toLowerCase()}
 function getUsers(){
   const raw=load(USERS_KEY,{})||{}, clean={};
@@ -198,7 +251,7 @@ const supportNewForm=document.getElementById('supportNewForm');
 document.getElementById('newSupport')?.addEventListener('click',()=>{if(supportNewForm){supportNewForm.hidden=false;document.getElementById('supportTitleInput').focus();}});
 document.getElementById('cancelSupport')?.addEventListener('click',()=>{if(supportNewForm){supportNewForm.hidden=true;document.getElementById('supportTitleInput').value='';document.getElementById('supportTextInput').value='';document.getElementById('supportPhotoInput').value='';document.getElementById('supportPhotoName').textContent='';}});
 document.getElementById('supportPhotoInput')?.addEventListener('change',e=>{const f=e.target.files?.[0];document.getElementById('supportPhotoName').textContent=f?f.name:'';});
-document.getElementById('createSupport')?.addEventListener('click',()=>{const title=document.getElementById('supportTitleInput').value.trim(),text=document.getElementById('supportTextInput').value.trim(),file=document.getElementById('supportPhotoInput').files?.[0];if(!title||!text){document.getElementById('supportTitleInput').classList.toggle('field-error',!title);document.getElementById('supportTextInput').classList.toggle('field-error',!text);return;}if(file&&file.size>5*1024*1024){document.getElementById('supportPhotoName').textContent='Фото слишком большое (максимум 5 МБ)';return;}const finish=(photo='')=>{const t={id:Date.now().toString(36),title,author:normLogin(user.login),status:'новое',photo,messages:[{author:normLogin(user.login),text,date:new Date().toLocaleString('ru-RU')}],createdAt:new Date().toISOString()};const a=getTickets();a.unshift(t);save(SUPPORT_KEY,a);activeTicket=t.id;supportNewForm.hidden=true;document.getElementById('supportTitleInput').value='';document.getElementById('supportTextInput').value='';document.getElementById('supportPhotoInput').value='';document.getElementById('supportPhotoName').textContent='';renderSupport();};if(file){const r=new FileReader();r.onload=()=>finish(r.result);r.readAsDataURL(file)}else finish();});
+document.getElementById('createSupport')?.addEventListener('click',async()=>{const title=document.getElementById('supportTitleInput').value.trim(),text=document.getElementById('supportTextInput').value.trim(),file=document.getElementById('supportPhotoInput').files?.[0];if(!title||!text){document.getElementById('supportTitleInput').classList.toggle('field-error',!title);document.getElementById('supportTextInput').classList.toggle('field-error',!text);return;}if(file&&file.size>5*1024*1024){document.getElementById('supportPhotoName').textContent='Фото слишком большое (максимум 5 МБ)';return;}const photo=file?(await uploadAsset(file,'support')):'';const t={id:Date.now().toString(36),title,author:normLogin(user.login),status:'новое',photo,messages:[{author:normLogin(user.login),text,date:new Date().toLocaleString('ru-RU')}],createdAt:new Date().toISOString()};const a=getTickets();a.unshift(t);save(SUPPORT_KEY,a);activeTicket=t.id;supportNewForm.hidden=true;document.getElementById('supportTitleInput').value='';document.getElementById('supportTextInput').value='';document.getElementById('supportPhotoInput').value='';document.getElementById('supportPhotoName').textContent='';renderSupport();});
 document.getElementById('supportSend')?.addEventListener('click',()=>{if(!activeTicket)return;const input=document.getElementById('supportInput'),text=input.value.trim();if(!text)return;const a=getTickets(),t=a.find(x=>x.id===activeTicket);if(!t||t.status==='закрыто'||(!user.admin&&t.author!==normLogin(user.login)))return;if(user.admin&&t.status==='новое')t.status='принято';t.messages.push({author:normLogin(user.login),text,date:new Date().toLocaleString('ru-RU')});save(SUPPORT_KEY,a);input.value='';renderSupport()});
 document.getElementById('supportClose')?.addEventListener('click',()=>{if(!activeTicket)return;const a=getTickets(),t=a.find(x=>x.id===activeTicket);if(!t||t.status!=='принято')return;if(user.admin||t.author===normLogin(user.login)){t.status='закрыто';save(SUPPORT_KEY,a);renderSupport()}});
 async function renderChatUsers(){
@@ -271,12 +324,15 @@ function setupAdminPanel(){
   });
   const iconInput=document.getElementById('modIconInput');
   iconInput?.addEventListener('change',e=>{const f=e.target.files?.[0];if(!f)return;if(f.size>5*1024*1024){e.target.value='';pendingModIcon=null;return;}const r=new FileReader();r.onload=()=>{pendingModIcon=r.result;const p=document.getElementById('modIconPreview');if(p){p.style.backgroundImage=`url("${r.result}")`;p.style.backgroundSize='cover';p.textContent='';}};r.readAsDataURL(f);});
-  document.getElementById('publishMod')?.addEventListener('click',()=>{
+  document.getElementById('publishMod')?.addEventListener('click',async()=>{
     if(!canPublishRedux())return;
     const name=document.getElementById('modName').value.trim(), description=document.getElementById('modDescription').value.trim(), longDescription=document.getElementById('modLongDescription').value.trim(), videoUrl=document.getElementById('modVideoUrl').value.trim(), downloadUrl=document.getElementById('modDownloadUrl').value.trim();
     const status=document.getElementById('modStatus');
     if(!name||!downloadUrl){if(status)status.textContent='Укажи название и ссылку на скачивание';return;}
-    const m={id:Date.now().toString(36),name,description,longDescription,videoUrl,downloadUrl,iconUrl:pendingModIcon||'',owner:normLogin(user.login),ownerName:user.nickname||user.login,createdAt:new Date().toISOString()};
+    const iconFile=iconInput?.files?.[0];
+    let iconUrl=pendingModIcon||'';
+    if(iconFile&&realtimeEnabled()) iconUrl=await uploadAsset(iconFile,'mods') || iconUrl;
+    const m={id:Date.now().toString(36),name,description,longDescription,videoUrl,downloadUrl,iconUrl,owner:normLogin(user.login),ownerName:user.nickname||user.login,createdAt:new Date().toISOString()};
     const a=getMods();a.unshift(m);save(MODS_KEY,a);renderMods();
     ['modName','modDescription','modLongDescription','modVideoUrl','modDownloadUrl'].forEach(id=>{const e=document.getElementById(id);if(e)e.value=''});if(iconInput)iconInput.value='';pendingModIcon=null;const p=document.getElementById('modIconPreview');if(p){p.style.backgroundImage='';p.textContent='REDUX'}if(status){status.textContent='Redux опубликован';setTimeout(()=>status.textContent='',1800)}
   });
@@ -296,7 +352,7 @@ if(profileActions){profileActions.innerHTML='<button class="btn primary" id="edi
 document.getElementById('avatarInput')?.addEventListener('change',e=>{
   const f=e.target.files?.[0]; if(!f)return;
   if(f.size>5*1024*1024){e.target.value='';return;}
-  const r=new FileReader(); r.onload=()=>{user.avatar=r.result;const users=getUsers();const key=normLogin(user.login);if(users[key]){users[key].avatar=r.result;save(USERS_KEY,users);}save(USER_KEY,user);applyUser();};r.readAsDataURL(f);
+  const r=new FileReader(); r.onload=async()=>{let avatar=r.result;if(realtimeEnabled()) avatar=await uploadAsset(f,'avatars')||avatar;user.avatar=avatar;const users=getUsers();const key=normLogin(user.login);if(users[key]){users[key].avatar=avatar;save(USERS_KEY,users);}save(USER_KEY,user);applyUser();};r.readAsDataURL(f);
 });
 
 // Replace profile save with inline validation instead of popup alerts.
@@ -316,3 +372,4 @@ if(saveProfileBtn){saveProfileBtn.onclick=()=>{
 
 // Ensure setup runs after the existing DOM handlers have been registered.
 setupAdminPanel();
+setTimeout(async()=>{await hydrateCloudState();startCloudRealtime();},0);

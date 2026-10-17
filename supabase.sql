@@ -1,7 +1,5 @@
--- ReDuX: realtime chat tables for Supabase.
--- This chat uses the visual ReDuX registration; there is no email confirmation.
--- IMPORTANT: these policies are intentionally simple for a prototype. Before a public production launch,
--- replace them with real Supabase Auth + strict RLS policies.
+-- ReDuX shared backend (prototype)
+-- Chat + shared Redux + updates + support + users/bans.
 
 create table if not exists public.profiles (
   login text primary key,
@@ -18,20 +16,60 @@ create table if not exists public.messages (
   created_at timestamptz default now()
 );
 
+create table if not exists public.app_state (
+  key text primary key,
+  data jsonb not null default 'null'::jsonb,
+  updated_at timestamptz default now()
+);
+
 alter table public.profiles enable row level security;
 alter table public.messages enable row level security;
+alter table public.app_state enable row level security;
 
-drop policy if exists "profiles_read" on public.profiles;
+-- Prototype policies: the front-end uses the publishable/anon key.
+-- For a production launcher, replace these with authenticated-user policies.
+drop policy if exists "profiles_select" on public.profiles;
 drop policy if exists "profiles_insert" on public.profiles;
 drop policy if exists "profiles_update" on public.profiles;
-drop policy if exists "messages_read" on public.messages;
-drop policy if exists "messages_insert" on public.messages;
-
-create policy "profiles_read" on public.profiles for select to anon using (true);
+create policy "profiles_select" on public.profiles for select to anon using (true);
 create policy "profiles_insert" on public.profiles for insert to anon with check (true);
 create policy "profiles_update" on public.profiles for update to anon using (true) with check (true);
-create policy "messages_read" on public.messages for select to anon using (true);
+
+drop policy if exists "messages_select" on public.messages;
+drop policy if exists "messages_insert" on public.messages;
+create policy "messages_select" on public.messages for select to anon using (true);
 create policy "messages_insert" on public.messages for insert to anon with check (true);
 
--- Enable realtime for messages.
-alter publication supabase_realtime add table public.messages;
+drop policy if exists "app_state_select" on public.app_state;
+drop policy if exists "app_state_insert" on public.app_state;
+drop policy if exists "app_state_update" on public.app_state;
+drop policy if exists "app_state_delete" on public.app_state;
+create policy "app_state_select" on public.app_state for select to anon using (true);
+create policy "app_state_insert" on public.app_state for insert to anon with check (true);
+create policy "app_state_update" on public.app_state for update to anon using (true) with check (true);
+create policy "app_state_delete" on public.app_state for delete to anon using (true);
+
+-- Realtime
+
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='messages') then
+    alter publication supabase_realtime add table public.messages;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='app_state') then
+    alter publication supabase_realtime add table public.app_state;
+  end if;
+end
+$$;
+
+-- Shared public storage for Redux icons, avatars and support photos.
+insert into storage.buckets (id, name, public)
+values ('redux-assets', 'redux-assets', true)
+on conflict (id) do update set public=true;
+
+drop policy if exists "redux_assets_read" on storage.objects;
+drop policy if exists "redux_assets_insert" on storage.objects;
+drop policy if exists "redux_assets_update" on storage.objects;
+create policy "redux_assets_read" on storage.objects for select to anon using (bucket_id='redux-assets');
+create policy "redux_assets_insert" on storage.objects for insert to anon with check (bucket_id='redux-assets');
+create policy "redux_assets_update" on storage.objects for update to anon using (bucket_id='redux-assets') with check (bucket_id='redux-assets');
