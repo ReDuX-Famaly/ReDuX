@@ -35,3 +35,25 @@ alter table public.app_state replica identity full;
 do $$ begin
   alter publication supabase_realtime add table public.app_state;
 exception when duplicate_object then null; end $$;
+
+-- Дополнительные поля для хранения исходных объектов Redux/обновлений.
+alter table public.redux_mods add column if not exists data jsonb default '{}'::jsonb;
+alter table public.redux_updates add column if not exists data jsonb default '{}'::jsonb;
+
+update public.redux_users
+set password_hash='72b075d216bf6d6bc2d57e89c9bd7b08103f41a9b60c922962ace4616aa09f7b'
+where login='worixy' and (password_hash is null or password_hash='');
+
+-- Storage: публичное чтение файлов, загрузка/изменение/удаление для клиента.
+insert into storage.buckets (id, name, public)
+values ('redux-assets','redux-assets',true)
+on conflict (id) do update set public=true;
+
+drop policy if exists "redux_assets_public_read" on storage.objects;
+drop policy if exists "redux_assets_public_insert" on storage.objects;
+drop policy if exists "redux_assets_public_update" on storage.objects;
+drop policy if exists "redux_assets_public_delete" on storage.objects;
+create policy "redux_assets_public_read" on storage.objects for select to anon, authenticated using (bucket_id='redux-assets');
+create policy "redux_assets_public_insert" on storage.objects for insert to anon, authenticated with check (bucket_id='redux-assets');
+create policy "redux_assets_public_update" on storage.objects for update to anon, authenticated using (bucket_id='redux-assets') with check (bucket_id='redux-assets');
+create policy "redux_assets_public_delete" on storage.objects for delete to anon, authenticated using (bucket_id='redux-assets');
