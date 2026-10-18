@@ -3,52 +3,23 @@ const pages = document.querySelectorAll('.page');
 const title = document.getElementById('pageTitle');
 const titles = {home:'Главная',mods:'Redux',settings:'Настройки',profile:'Профиль'};
 const USER_KEY='reduxUser', USERS_KEY='reduxUsers', MODS_KEY='reduxMods', UPDATES_KEY='reduxUpdates', SESSION_KEY='reduxSession', SETTINGS_KEY='reduxSettings';
+const BANS_KEY='reduxBans';
 const defaultUser={name:'Гость',login:'guest',nickname:'Гость',bio:'Гостевой аккаунт.',role:'Гость',admin:false,guest:true,avatar:''};
 let user=load(USER_KEY)||defaultUser;
 let pendingModIcon=null,pendingModVideo=null,pendingModFile=null,currentDetail=null;
 let remoteMods=[];
 
-// Optional realtime backend: only the chat uses Supabase. If config is empty, the local chat fallback remains active.
 let sb = null;
-let chatRealtimeChannel = null;
-let remoteChatUsers = [];
 function realtimeEnabled(){return !!(window.REDUX_SUPABASE?.url && window.REDUX_SUPABASE?.anonKey && window.supabase?.createClient)}
 function initRealtime(){if(realtimeEnabled()&&!sb) sb=window.supabase.createClient(window.REDUX_SUPABASE.url,window.REDUX_SUPABASE.anonKey); return !!sb}
 async function syncPublicUser(){
   if(!initRealtime()||user.guest)return;
-  try{await sb.from('profiles').upsert({login:normLogin(user.login),nickname:user.nickname||user.login,avatar:user.avatar||''},{onConflict:'login'});}catch(e){console.warn('ReDuX realtime profile sync:',e)}
+  try{await sb.from('profiles').upsert({login:normLogin(user.login),nickname:user.nickname||user.login,avatar:user.avatar||''},{onConflict:'login'});}catch(e){console.warn('ReDuX profile sync:',e)}
 }
-async function loadRemoteChatUsers(){
-  if(!initRealtime()||user.guest)return null;
-  try{const {data,error}=await sb.from('profiles').select('login,nickname,avatar').order('login'); if(error) throw error; remoteChatUsers=data||[]; return remoteChatUsers;}catch(e){console.warn('ReDuX realtime user search:',e); return null;}
-}
-function stopChatRealtime(){if(sb&&chatRealtimeChannel){sb.removeChannel(chatRealtimeChannel);chatRealtimeChannel=null}}
-async function startChatRealtime(){
-  if(!initRealtime()||user.guest)return;
-  stopChatRealtime();
-  chatRealtimeChannel=sb.channel('redux-chat-'+normLogin(user.login))
-    .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:`receiver=eq.${normLogin(user.login)}`},payload=>{
-      const m=payload.new; if(!m||m.sender===normLogin(user.login))return; renderChat();
-    }).subscribe();
-}
-async function loadRemoteMessages(other){
-  if(!initRealtime()||!other)return null;
-  const me=normLogin(user.login), them=normLogin(other);
-  try{
-    const {data,error}=await sb.from('messages').select('sender,receiver,text,created_at').or(`and(sender.eq.${me},receiver.eq.${them}),and(sender.eq.${them},receiver.eq.${me})`).order('created_at',{ascending:true});
-    if(error) throw error;
-    return (data||[]).map(m=>({author:m.sender,text:m.text,date:new Date(m.created_at).toLocaleString('ru-RU')}));
-  }catch(e){console.warn('ReDuX realtime message load:',e); return null;}
-}
-async function sendRemoteMessage(other,text){
-  if(!initRealtime()||!other)return false;
-  try{const {error}=await sb.from('messages').insert({sender:normLogin(user.login),receiver:normLogin(other),text}); if(error)throw error; return true;}catch(e){console.warn('ReDuX realtime message send:',e); return false;}
-}
-
 
 let cloudReady=false;
 let cloudSyncing=false;
-const CLOUD_KEYS=[USERS_KEY,MODS_KEY,UPDATES_KEY,BANS_KEY,SUPPORT_KEY];
+const CLOUD_KEYS=[USERS_KEY,MODS_KEY,UPDATES_KEY,BANS_KEY];
 function load(k, fallback=null){try{const v=localStorage.getItem(k);return v?JSON.parse(v):fallback}catch{return fallback}}
 function save(k,v){
   localStorage.setItem(k,JSON.stringify(v));
@@ -76,19 +47,33 @@ async function hydrateCloudState(){
     if(error) throw error;
     const remoteKeys=new Set((data||[]).map(r=>r.key));
     cloudSyncing=true;
-    (data||[]).forEach(r=>{if(CLOUD_KEYS.includes(r.key)) localStorage.setItem(r.key,JSON.stringify(r.data));});
+    (data||[]).forEach(r=>{
+      if(!CLOUD_KEYS.includes(r.key)) return;
+      localStorage.setItem(r.key,JSON.stringify(r.data));
+    });
     cloudSyncing=false;
     cloudReady=true;
     const users=getUsers();
-    if(!users.worixy){users.worixy={name:'Worixy',login:'Worixy',nickname:'Worixy',password:'Worixy123',bio:'',role:'Президент',admin:true,guest:false,avatar:''};localStorage.setItem(USERS_KEY,JSON.stringify(users));}
-    // First launch: migrate the existing local collections to the shared database.
-    for(const [k,v] of [[USERS_KEY,getUsers()],[MODS_KEY,getMods()],[UPDATES_KEY,getUpdates()],[BANS_KEY,getBans()],[SUPPORT_KEY,getTickets()]]){
+    if(!users.worixy){
+      users.worixy={name:'Worixy',login:'Worixy',nickname:'Worixy',password:'Worixy123',bio:'',role:'Президент',admin:true,guest:false,avatar:''};
+      localStorage.setItem(USERS_KEY,JSON.stringify(users));
+    }
+    for(const [k,v] of [[USERS_KEY,getUsers()],[MODS_KEY,getMods()],[UPDATES_KEY,getUpdates()],[BANS_KEY,getBans()]]){
       if(!remoteKeys.has(k)) await syncCloudState(k,v);
     }
     const sess=load(SESSION_KEY,null);
-    if(sess&&!sess.guest){const u=getUsers()[normLogin(sess.login)];if(u&&!u.banned){user={...u,guest:false};save(USER_KEY,user)}}
+    if(sess&&!sess.guest){
+      const u=getUsers()[normLogin(sess.login)];
+      if(u&&!u.banned){user={...u,guest:false};save(USER_KEY,user);}
+    }
     applyUser();
-  }catch(e){cloudReady=false;console.warn('ReDuX cloud bootstrap:',e)}
+    renderAdminUsers();
+    renderAdminBans();
+  }catch(e){
+    cloudReady=false;
+    cloudSyncing=false;
+    console.warn('ReDuX cloud bootstrap:',e);
+  }
 }
 function startCloudRealtime(){
   if(!initRealtime())return;
@@ -97,7 +82,6 @@ function startCloudRealtime(){
       const row=payload.new; if(!row||!CLOUD_KEYS.includes(row.key))return;
       cloudSyncing=true;localStorage.setItem(row.key,JSON.stringify(row.data));cloudSyncing=false;
       if(row.key===USERS_KEY){const u=getUsers()[normLogin(user.login)];if(u&&!user.guest){user={...u,guest:false};localStorage.setItem(USER_KEY,JSON.stringify(user));}}
-      renderMods();renderUpdates();renderAdminUsers();renderAdminBans();renderSupport();
     }).subscribe();
   window.reduxCloudChannel=channel;
 }
@@ -116,11 +100,8 @@ function ensureAdmin(){
   save(USERS_KEY,users);
 }
 
-const BANS_KEY='reduxBans', SUPPORT_KEY='reduxSupport', CHAT_KEY='reduxChats';
 function saveUsers(v){save(USERS_KEY,v)}
 function getBans(){return load(BANS_KEY,[])||[]}
-function getTickets(){return load(SUPPORT_KEY,[])||[]}
-function getChats(){return load(CHAT_KEY,[])||[]}
 function isPresident(){return normLogin(user.login)==='worixy' && !user.guest}
 function roleName(u){return u?.role || (normLogin(u?.login)==='worixy'?'Президент':u?.guest?'Гость':'Игрок')}
 function canManageRedux(){return isPresident() || ['Вице-президент','Заместитель президента'].includes(user.role)}
@@ -131,7 +112,7 @@ function setAvatar(el,avatar,fallback){if(!el)return;if(avatar){el.style.backgro
 function syncRole(){user.admin=String(user.login||'').toLowerCase()==='worixy';if(user.guest){user.admin=false;user.role='Гость';} else if(String(user.login||'').toLowerCase()==='worixy'){user.admin=true;user.role='Президент';} else {user.admin=false; if(!['Вице-президент','Заместитель президента'].includes(user.role))user.role='Игрок';}}
 function applyUser(){
  syncRole(); save(USER_KEY,user);
- if(!user.guest){syncPublicUser(); startChatRealtime();}
+ if(!user.guest){syncPublicUser();}
  const n=user.nickname||user.login||'Гость', l=user.login||'guest', f=n[0]?.toUpperCase()||'Г';
  document.getElementById('sidebarNickname').textContent=n;document.getElementById('sidebarRole').textContent=user.role;
  document.getElementById('profileNickname').textContent=n;document.getElementById('profileLogin').textContent=l;document.getElementById('profileUsername').textContent='@'+l;document.getElementById('profileName').textContent=user.name||'—';document.getElementById('profileRole').textContent=user.role;document.getElementById('profileBio').textContent=user.bio||'Пока ничего не указано.';
@@ -205,7 +186,7 @@ document.getElementById('reduxDetailDownload')?.addEventListener('click',()=>{if
 function downloadMod(m){if(!m.downloadUrl)return alert('Ссылка на скачивание не указана.');window.open(m.downloadUrl,'_blank','noopener,noreferrer')}
 
 // Settings — сохраняются и реально применяются в этом браузере.
-function renderAdminUsers(){
+function renderAdminUsersLegacy(){
  const box=document.getElementById('adminUsersList');if(!box)return;
  const q=(document.getElementById('adminUserSearch')?.value||'').toLowerCase().trim(), users=getUsers();
  const arr=Object.values(users).filter(u=>u.login&&(!q||u.login.toLowerCase().includes(q)||(u.nickname||'').toLowerCase().includes(q)));
@@ -228,6 +209,36 @@ function renderAdminUsers(){
  box.querySelectorAll('.ban-user').forEach(b=>b.addEventListener('click',()=>banUser(b.dataset.login)));
  box.querySelectorAll('.unban-user').forEach(b=>b.addEventListener('click',()=>unbanUser(b.dataset.login)));
 }
+function renderAdminUsers(){
+  if(!isPresident()) return;
+  const box=document.getElementById('adminUsersList');
+  if(!box) return;
+  const input=document.getElementById('adminUserSearch');
+  const q=normLogin(input?.value||'');
+  const users=getUsers();
+  const arr=Object.values(users)
+    .filter(u=>u?.login)
+    .filter(u=>!q || normLogin(u.login).includes(q) || normLogin(u.nickname||'').includes(q))
+    .sort((a,b)=>String(a.nickname||a.login).localeCompare(String(b.nickname||b.login),'ru'));
+  box.innerHTML=arr.length ? arr.map(u=>{
+    const canManage=normLogin(u.login)!=='worixy';
+    return `<div class="admin-content-row ${u.banned?'banned-row':''}">
+      <div><b>${esc(u.nickname||u.login)} <span class="role-pill">${esc(roleName(u))}</span></b><small>@${esc(u.login)}${u.banned?` · <span class="danger-text">Заблокирован</span>`:''}</small></div>
+      <div class="admin-role-actions">
+        ${canManage&&u.role!=='Вице-президент'?`<button class="btn ghost role-action" data-login="${esc(u.login)}" data-role="Вице-президент">Назначить вице</button>`:''}
+        ${canManage&&u.role==='Вице-президент'?`<button class="btn ghost role-action" data-login="${esc(u.login)}" data-role="Игрок">Снять вице</button>`:''}
+        ${canManage&&u.role!=='Заместитель президента'?`<button class="btn ghost role-action" data-login="${esc(u.login)}" data-role="Заместитель президента">Назначить замом</button>`:''}
+        ${canManage&&u.role==='Заместитель президента'?`<button class="btn ghost role-action" data-login="${esc(u.login)}" data-role="Игрок">Снять зама</button>`:''}
+        ${canManage&&!u.banned?`<button class="btn danger ban-user" data-login="${esc(u.login)}">Забанить</button>`:''}
+        ${canManage&&u.banned?`<button class="btn primary unban-user" data-login="${esc(u.login)}">Разбанить</button>`:''}
+      </div>
+    </div>`;
+  }).join('') : '<div class="admin-content-empty">Пользователи не найдены.</div>';
+  box.querySelectorAll('.role-action').forEach(b=>b.onclick=()=>setUserRole(b.dataset.login,b.dataset.role));
+  box.querySelectorAll('.ban-user').forEach(b=>b.onclick=()=>banUser(b.dataset.login));
+  box.querySelectorAll('.unban-user').forEach(b=>b.onclick=()=>unbanUser(b.dataset.login));
+}
+
 function setUserRole(login,role){
  if(!isPresident())return;
  const users=getUsers(),key=normLogin(login),u=users[key];if(!u||key==='worixy')return;
@@ -240,52 +251,7 @@ function banUser(login){if(!isPresident())return;const users=getUsers(),key=norm
 function unbanUser(login){if(!isPresident())return;const users=getUsers(),key=normLogin(login),u=users[key];if(!u)return;u.banned=false;u.banReason='';users[key]=u;saveUsers(users);save(BANS_KEY,getBans().filter(x=>normLogin(x.login)!==key));renderAdminUsers();renderAdminBans()}
 function renderAdminBans(){const box=document.getElementById('adminBansList');if(!box)return;const bans=getBans();box.innerHTML=bans.length?bans.map(x=>`<div class="admin-content-row"><div><b>@${esc(x.login)}</b><small>${esc(x.reason||'Без причины')} · ${esc(x.date||'')} · выдал ${esc(x.by||'')}</small></div>${isPresident()?`<button class="btn primary unban-user" data-login="${esc(x.login)}">Разбанить</button>`:''}</div>`).join(''):'<div class="admin-content-empty">Заблокированных пользователей нет.</div>';box.querySelectorAll('.unban-user').forEach(b=>b.addEventListener('click',()=>unbanUser(b.dataset.login)))}
 
-document.getElementById('adminUserSearch')?.addEventListener('input',renderAdminUsers);
-function openSupport(){openModal('supportModal');renderSupport()}
-function openChat(){openModal('chatModal');renderChatUsers()}
-document.getElementById('openSupport')?.addEventListener('click',()=>{if(user.guest)return;openSupport()});document.getElementById('openChat')?.addEventListener('click',()=>{if(user.guest)return;openChat()});
-let activeTicket=null,activeChat=null;
-function renderSupport(){const list=document.getElementById('supportList');if(!list)return;const tickets=getTickets().filter(t=>user.admin||t.author===normLogin(user.login));list.innerHTML=tickets.length?tickets.map(t=>`<div class="support-item ${activeTicket===t.id?'active':''}" data-id="${t.id}"><div class="support-item-main"><b>${esc(t.title)}</b><small>@${esc(t.author)} · ${esc(t.status)}</small></div>${user.admin?`<button class="support-delete-btn" data-id="${esc(t.id)}" title="Удалить обращение">×</button>`:''}</div>`).join(''):'<div class="admin-content-empty">Обращений пока нет.</div>';list.querySelectorAll('.support-item').forEach(x=>x.addEventListener('click',e=>{if(e.target.closest('.support-delete-btn'))return;activeTicket=x.dataset.id;renderSupport()}));list.querySelectorAll('.support-delete-btn').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();if(!user.admin)return;if(!confirm('Удалить это обращение?'))return;const a=getTickets().filter(t=>t.id!==b.dataset.id);save(SUPPORT_KEY,a);if(activeTicket===b.dataset.id)activeTicket=null;renderSupport();}));if(activeTicket){const t=getTickets().find(x=>x.id===activeTicket);if(t)renderTicket(t)}else{document.getElementById('supportHeader').textContent='Выбери обращение';document.getElementById('supportMessages').innerHTML=''}}
-function renderTicket(t){document.getElementById('supportHeader').textContent=`${t.title} · ${t.status}`;document.getElementById('supportMessages').innerHTML=t.messages.map(m=>`<div class="chat-bubble ${m.author===normLogin(user.login)?'me':''}">${esc(m.text)}${m.photo?`<img class="support-photo" src="${m.photo}" alt="Фото обращения">`:''}<small>@${esc(m.author)} · ${esc(m.date)}</small></div>`).join('');const close=document.getElementById('supportClose');close.disabled= t.status!=='принято' || !(user.admin||t.author===normLogin(user.login));}
-const supportNewForm=document.getElementById('supportNewForm');
-document.getElementById('newSupport')?.addEventListener('click',()=>{if(supportNewForm){supportNewForm.hidden=false;document.getElementById('supportTitleInput').focus();}});
-document.getElementById('cancelSupport')?.addEventListener('click',()=>{if(supportNewForm){supportNewForm.hidden=true;document.getElementById('supportTitleInput').value='';document.getElementById('supportTextInput').value='';document.getElementById('supportPhotoInput').value='';document.getElementById('supportPhotoName').textContent='';}});
-document.getElementById('supportPhotoInput')?.addEventListener('change',e=>{const f=e.target.files?.[0];document.getElementById('supportPhotoName').textContent=f?f.name:'';});
-document.getElementById('createSupport')?.addEventListener('click',async()=>{const title=document.getElementById('supportTitleInput').value.trim(),text=document.getElementById('supportTextInput').value.trim(),file=document.getElementById('supportPhotoInput').files?.[0];if(!title||!text){document.getElementById('supportTitleInput').classList.toggle('field-error',!title);document.getElementById('supportTextInput').classList.toggle('field-error',!text);return;}if(file&&file.size>5*1024*1024){document.getElementById('supportPhotoName').textContent='Фото слишком большое (максимум 5 МБ)';return;}const photo=file?(await uploadAsset(file,'support')):'';const t={id:Date.now().toString(36),title,author:normLogin(user.login),status:'новое',photo,messages:[{author:normLogin(user.login),text,date:new Date().toLocaleString('ru-RU')}],createdAt:new Date().toISOString()};const a=getTickets();a.unshift(t);save(SUPPORT_KEY,a);activeTicket=t.id;supportNewForm.hidden=true;document.getElementById('supportTitleInput').value='';document.getElementById('supportTextInput').value='';document.getElementById('supportPhotoInput').value='';document.getElementById('supportPhotoName').textContent='';renderSupport();});
-document.getElementById('supportSend')?.addEventListener('click',()=>{if(!activeTicket)return;const input=document.getElementById('supportInput'),text=input.value.trim();if(!text)return;const a=getTickets(),t=a.find(x=>x.id===activeTicket);if(!t||t.status==='закрыто'||(!user.admin&&t.author!==normLogin(user.login)))return;if(user.admin&&t.status==='новое')t.status='принято';t.messages.push({author:normLogin(user.login),text,date:new Date().toLocaleString('ru-RU')});save(SUPPORT_KEY,a);input.value='';renderSupport()});
-document.getElementById('supportClose')?.addEventListener('click',()=>{if(!activeTicket)return;const a=getTickets(),t=a.find(x=>x.id===activeTicket);if(!t||t.status!=='принято')return;if(user.admin||t.author===normLogin(user.login)){t.status='закрыто';save(SUPPORT_KEY,a);renderSupport()}});
-async function renderChatUsers(){
- const box=document.getElementById('chatUsers');if(!box||user.guest)return;
- const q=normLogin(document.getElementById('chatUserSearch')?.value||'');
- const remote=await loadRemoteChatUsers();
- const source=remote||Object.values(getUsers()).map(u=>({login:u.login,nickname:u.nickname,avatar:u.avatar}));
- const users=source.filter(u=>{const login=normLogin(u.login);return login!==normLogin(user.login)&&(!q||login.includes(q));});
- box.innerHTML=users.map(u=>`<div class="support-item ${activeChat===normLogin(u.login)?'active':''}" data-login="${esc(u.login)}"><b>${esc(u.nickname||u.login)}</b><small>@${esc(u.login)}</small></div>`).join('');
- box.querySelectorAll('.support-item').forEach(x=>x.addEventListener('click',()=>{activeChat=x.dataset.login;renderChatUsers();renderChat()}));
- if(activeChat)renderChat();
-}
-document.getElementById('chatUserSearch')?.addEventListener('input',renderChatUsers);
-function chatKey(a,b){return [normLogin(a),normLogin(b)].sort().join('|')}
-async function renderChat(){
- const msgsEl=document.getElementById('chatMessages'); if(!msgsEl)return;
- const local=getChats().filter(m=>m.key===chatKey(user.login,activeChat));
- const remote=await loadRemoteMessages(activeChat); const msgs=remote||local;
- const other=(remoteChatUsers.length?remoteChatUsers:Object.values(getUsers())).find(u=>normLogin(u.login)===normLogin(activeChat));
- document.getElementById('chatHeader').textContent=other?`${other.nickname||other.login} · @${other.login}`:'Чат';
- msgsEl.innerHTML=msgs.map(m=>`<div class="chat-bubble ${m.author===normLogin(user.login)?'me':''}">${esc(m.text)}<small>@${esc(m.author)} · ${esc(m.date)}</small></div>`).join('');
- msgsEl.scrollTop=msgsEl.scrollHeight;
-}
-document.getElementById('chatSend')?.addEventListener('click',async()=>{
- if(!activeChat)return; const input=document.getElementById('chatInput'),text=input.value.trim();if(!text)return;
- if(realtimeEnabled()) { const ok=await sendRemoteMessage(activeChat,text); if(!ok)return; }
- else { const a=getChats();a.push({key:chatKey(user.login,activeChat),author:normLogin(user.login),text,date:new Date().toLocaleString('ru-RU')});save(CHAT_KEY,a); }
- input.value=''; renderChat();
-});
-
-// Comfortable message composer: Enter sends, Shift+Enter makes a new line.
-[['chatInput','chatSend'],['supportInput','supportSend']].forEach(([inputId,buttonId])=>{const el=document.getElementById(inputId),btn=document.getElementById(buttonId);if(!el||!btn)return;el.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();btn.click();}});});
-
-
+document.getElementById('adminUserSearch')?.addEventListener('input',()=>renderAdminUsers());
 // Initialization
 (function init(){
   ensureAdmin();
@@ -372,4 +338,15 @@ if(saveProfileBtn){saveProfileBtn.onclick=()=>{
 
 // Ensure setup runs after the existing DOM handlers have been registered.
 setupAdminPanel();
-setTimeout(async()=>{await hydrateCloudState();startCloudRealtime();},0);
+
+// Cloud is optional and loaded AFTER the launcher UI is already alive.
+// A CDN/network failure must never prevent local buttons/auth/navigation from working.
+(function loadCloudInBackground(){
+  if(!window.REDUX_SUPABASE?.url || !window.REDUX_SUPABASE?.anonKey) return;
+  const script=document.createElement('script');
+  script.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+  script.async=true;
+  script.onload=async()=>{ try{ await hydrateCloudState(); startCloudRealtime(); }catch(e){ console.warn('ReDuX cloud background init:',e); } };
+  script.onerror=()=>console.warn('ReDuX: Supabase CDN недоступен — локальный режим продолжает работать.');
+  document.head.appendChild(script);
+})();

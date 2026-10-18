@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ReDuX</title>
+  <link rel="icon" type="image/jpeg" href="assets/redux-site-icon.jpg">
+  <link rel="apple-touch-icon" href="assets/redux-site-icon.jpg">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -129,27 +131,7 @@
         <div class="admin-content-list" id="adminBansList"></div>
       </section>
     </div>
-  </div>
-
-  <div class="modal-backdrop" id="supportModal">
-    <div class="modal wide-modal">
-      <button class="modal-close" data-close="supportModal">×</button>
-      <div class="modal-heading"><span class="eyebrow">ПОДДЕРЖКА</span><h2>Обращения</h2><p>Создавай обращения и общайся с командой ReDuX.</p></div>
-      <div class="support-layout support-modern"><div class="support-list-panel"><div class="panel-label">МОИ ОБРАЩЕНИЯ</div><div class="support-list" id="supportList"></div><button class="btn primary support-new-btn" id="newSupport">+ Новое обращение</button></div><div class="support-chat support-conversation"><div id="supportHeader" class="chat-header"><div><span class="eyebrow">ОБРАЩЕНИЕ</span><strong>Выбери обращение</strong></div></div><div id="supportMessages" class="chat-messages"></div><div class="chat-compose"><textarea id="supportInput" rows="2" placeholder="Написать сообщение..."></textarea><button class="btn primary" id="supportSend">Отправить</button><button class="btn ghost" id="supportClose">Закрыть</button></div></div></div>
-      <div class="support-new-form" id="supportNewForm" hidden><div class="support-form-title">Новое обращение</div><input id="supportTitleInput" class="chat-user-search" placeholder="Название обращения"><textarea id="supportTextInput" rows="5" placeholder="Опиши проблему или вопрос..."></textarea><label class="file-pill">📎 Добавить фото<input id="supportPhotoInput" type="file" accept="image/png,image/jpeg,image/webp"></label><span class="file-name" id="supportPhotoName"></span><div class="modal-actions"><button class="btn ghost" id="cancelSupport">Отмена</button><button class="btn primary" id="createSupport">Создать обращение</button></div></div>
-    </div>
-  </div>
-
-  <div class="modal-backdrop" id="chatModal">
-    <div class="modal wide-modal">
-      <button class="modal-close" data-close="chatModal">×</button>
-      <div class="modal-heading"><span class="eyebrow">СООБЩЕНИЯ</span><h2>Чат</h2><p>Найди пользователя по логину и начни переписку.</p></div>
-      <div class="chat-search-wrap"><input id="chatUserSearch" class="chat-user-search" type="search" placeholder="Поиск по логину..."></div>
-      <div class="chat-layout"><div class="support-list" id="chatUsers"></div><div class="support-chat"><div id="chatHeader" class="chat-header">Выбери пользователя</div><div id="chatMessages" class="chat-messages"></div><div class="chat-compose"><textarea id="chatInput" rows="2" placeholder="Сообщение"></textarea><button class="btn primary" id="chatSend">Отправить</button></div></div></div>
-    </div>
-  </div>
-
-  <div class="modal-backdrop" id="reduxDetailModal"><div class="modal redux-detail-modal"><button class="modal-close" data-close="reduxDetailModal">×</button>
+  </div><div class="modal-backdrop" id="reduxDetailModal"><div class="modal redux-detail-modal"><button class="modal-close" data-close="reduxDetailModal">×</button>
     <div class="modal-heading"><span class="eyebrow">REDUX</span><h2 id="reduxDetailName">Redux</h2><p id="reduxDetailShort"></p></div>
     <div id="reduxDetailVideo" class="redux-video-wrap"></div><div class="redux-detail-text" id="reduxDetailLong"></div>
     <div class="modal-actions"><button class="btn ghost" data-close="reduxDetailModal">Закрыть</button><button class="btn primary" id="reduxDetailDownload">Скачать</button></div>
@@ -178,8 +160,6 @@
         <button class="nav-item" data-page="mods">
           <span class="icon">◈</span><span>Redux</span>
         </button>
-        <button class="nav-item auth-only-nav" id="openChat"><span class="icon">✉</span><span>Чат</span></button>
-        <button class="nav-item auth-only-nav" id="openSupport"><span class="icon">?</span><span>Поддержка</span></button>
         <button class="nav-item" data-page="settings">
           <span class="icon">⚙</span><span>Настройки</span>
         </button>
@@ -253,9 +233,7 @@
           </div>
           <div class="mods-grid" id="modsGrid"></div>
         </div>
-      </div>
-
-      <div class="page" id="settings">
+      </div><div class="page" id="settings">
         <div class="section-card">
           <div class="section-heading">
             <div><span class="eyebrow">ПРИЛОЖЕНИЕ</span><h2>Настройки</h2></div>
@@ -300,6 +278,15 @@
           </div>
 
           <div class="account-actions"></div>
+
+          <div class="profile-dev-note">
+            <div class="profile-dev-note-icon">⚙</div>
+            <div>
+              <strong>Профиль находится в разработке</strong>
+              <span>Основные функции уже работают: аватар, логин, никнейм, пароль и информация «О себе» сохраняются.</span>
+            </div>
+            <span class="profile-dev-badge">В РАЗРАБОТКЕ</span>
+          </div>
         </div>
       </div>
     </section>
@@ -315,8 +302,8 @@
     </aside>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="app.js"></script>
 </body>
 </html>
