@@ -26,7 +26,7 @@ async function loadRemoteUsers(){
     const {data,error}=await sb.from('redux_users').select('*').order('login');
     if(error)throw error;
     const users={};(data||[]).forEach(u=>{users[normLogin(u.login)]={name:u.name||u.login,login:u.login,nickname:u.nickname||u.login,password_hash:u.password_hash||'',bio:u.bio||'',role:u.role||'Игрок',admin:!!u.admin,guest:false,avatar:u.avatar||'',banned:!!u.banned,banReason:u.ban_reason||''};});
-    if(!users.worixy) users.worixy={name:'Worixy',login:'Worixy',nickname:'Worixy',password_hash:'',bio:'',role:'Президент',admin:true,guest:false,avatar:'',banned:false,banReason:''};
+    if(!users.owner) users.owner={name:'Owner',login:'Owner',nickname:'Owner',password_hash:'9ced5922d4abbfc50d8846710b653ab6a7b16f213610dcf503f0066269e6ced4',bio:'Владелец ReDuX',role:'Owner',admin:true,guest:false,avatar:'',banned:false,banReason:''};
     localStorage.setItem(USERS_KEY,JSON.stringify(users));
     return users;
   }catch(e){console.warn('ReDuX remote users load:',e);return null;}
@@ -103,7 +103,7 @@ async function hydrateCloudState(){
     cloudSyncing=false;
     cloudReady=true;
     const users=getUsers();
-    if(!users.worixy){users.worixy={name:'Worixy',login:'Worixy',nickname:'Worixy',password:'Worixy123',bio:'',role:'Президент',admin:true,guest:false,avatar:''};localStorage.setItem(USERS_KEY,JSON.stringify(users));}
+    if(!users.owner){users.owner={name:'Owner',login:'Owner',nickname:'Owner',password_hash:'9ced5922d4abbfc50d8846710b653ab6a7b16f213610dcf503f0066269e6ced4',bio:'Владелец ReDuX',role:'Owner',admin:true,guest:false,avatar:'',banned:false,banReason:''};localStorage.setItem(USERS_KEY,JSON.stringify(users));await syncAllUsers(users);}
     // First launch: migrate the existing local collections to the shared database.
     for(const [k,v] of [[USERS_KEY,getUsers()],[MODS_KEY,getMods()],[UPDATES_KEY,getUpdates()],[BANS_KEY,getBans()],[SUPPORT_KEY,getTickets()]]){
       if(!remoteKeys.has(k)) await syncCloudState(k,v);
@@ -120,7 +120,7 @@ function startCloudRealtime(){
       const row=payload.new; if(!row||!CLOUD_KEYS.includes(row.key))return;
       cloudSyncing=true;localStorage.setItem(row.key,JSON.stringify(row.data));cloudSyncing=false;
       if(row.key===USERS_KEY){const u=getUsers()[normLogin(user.login)];if(u&&!user.guest){user={...u,guest:false};localStorage.setItem(USER_KEY,JSON.stringify(user));}}
-      renderMods();renderUpdates();renderAdminUsers();renderAdminBans();renderSupport();
+      renderMods();renderUpdates();renderAdminUsers();renderAdminBans();
     }).subscribe();
   window.reduxCloudChannel=channel;
 }
@@ -133,25 +133,24 @@ function getUsers(){
 }
 function ensureAdmin(){
   const users=getUsers();
-  const key='worixy';
-  if(!users[key]) users[key]={name:'Worixy',login:'Worixy',nickname:'Worixy',password:'Worixy123',bio:'',role:'Президент',admin:true,guest:false,avatar:''};
-  else {users[key]={...users[key],login:'Worixy',admin:true,role:'Президент',guest:false};}
-  save(USERS_KEY,users); syncAllUsers(users);
+  const key='owner';
+  const owner={name:'Owner',login:'Owner',nickname:'Owner',password_hash:'9ced5922d4abbfc50d8846710b653ab6a7b16f213610dcf503f0066269e6ced4',bio:'Владелец ReDuX',role:'Owner',admin:true,guest:false,avatar:'',banned:false,banReason:''};
+  users[key]={...(users[key]||{}),...owner};
+  save(USERS_KEY,users);
+  syncAllUsers(users);
 }
-
-
 function saveUsers(v){save(USERS_KEY,v); syncAllUsers(v)}
 function getBans(){return load(BANS_KEY,[])||[]}
 function getTickets(){return load(SUPPORT_KEY,[])||[]}
 function getChats(){return load(CHAT_KEY,[])||[]}
-function isPresident(){return normLogin(user.login)==='worixy' && !user.guest}
-function roleName(u){return u?.role || (normLogin(u?.login)==='worixy'?'Президент':u?.guest?'Гость':'Игрок')}
+function isPresident(){return normLogin(user.login)==='owner' && !user.guest}
+function roleName(u){return u?.role || (normLogin(u?.login)==='owner'?'Owner':u?.guest?'Гость':'Игрок')}
 function canManageRedux(){return isPresident() || ['Вице-президент','Заместитель президента'].includes(user.role)}
 function canPublishRedux(){return canManageRedux() && !user.guest}
 
 function esc(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function setAvatar(el,avatar,fallback){if(!el)return;if(avatar){el.style.backgroundImage=`url("${avatar}")`;el.style.backgroundSize='cover';el.style.backgroundPosition='center';el.textContent=''}else{el.style.backgroundImage='';el.textContent=fallback}}
-function syncRole(){user.admin=String(user.login||'').toLowerCase()==='worixy';if(user.guest){user.admin=false;user.role='Гость';} else if(String(user.login||'').toLowerCase()==='worixy'){user.admin=true;user.role='Президент';} else {user.admin=false; if(!['Вице-президент','Заместитель президента'].includes(user.role))user.role='Игрок';}}
+function syncRole(){user.admin=normLogin(user.login)==='owner';if(user.guest){user.admin=false;user.role='Гость';} else if(normLogin(user.login)==='owner'){user.admin=true;user.role='Owner';} else {user.admin=false; if(!['Вице-президент','Заместитель президента'].includes(user.role))user.role='Игрок';}}
 function applyUser(){
  syncRole(); save(USER_KEY,user);
  if(!user.guest){syncPublicUser(); startChatRealtime();}
@@ -170,6 +169,7 @@ function getUpdates(){return load(UPDATES_KEY,[])||[]}
 function showPage(page){buttons.forEach(b=>b.classList.toggle('active',b.dataset.page===page));pages.forEach(p=>p.classList.toggle('active',p.id===page));title.textContent=titles[page]||'Главная'}
 buttons.forEach(b=>b.addEventListener('click',()=>showPage(b.dataset.page)));
 document.getElementById('openAdmin')?.addEventListener('click',()=>{if(!canManageRedux())return;openModal('adminModal');renderAdminUsers();renderAdminBans();renderMods();});
+document.querySelectorAll('[data-admin-tab]').forEach(tab=>tab.addEventListener('click',()=>{const name=tab.dataset.adminTab;document.querySelectorAll('.admin-tab').forEach(t=>t.classList.toggle('active',t===tab));document.querySelectorAll('.admin-section').forEach(sec=>sec.classList.toggle('active',sec.id===`admin${name[0].toUpperCase()}${name.slice(1)}Section`));if(name==='users')renderAdminUsers();if(name==='bans')renderAdminBans();if(name==='mods')renderMods();}));
 
 function openModal(id){document.getElementById(id)?.classList.add('open')}function closeModal(id){document.getElementById(id)?.classList.remove('open')}
 document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>closeModal(b.dataset.close)));
@@ -199,7 +199,7 @@ document.getElementById('registerContinue').addEventListener('click',async()=>{
  if(!name||!login||!p)return authError('registerError','Заполни все поля.');
  if(p.length<6)return authError('registerError','Пароль должен содержать минимум 6 символов.');
  if(p!==p2)return authError('registerError','Пароли не совпадают.');
- const key=normLogin(login);if(key==='worixy')return authError('registerError','Этот логин зарезервирован.');
+ const key=normLogin(login);if(key==='owner')return authError('registerError','Этот логин зарезервирован.');
  const users=await refreshUsers();if(users[key])return authError('registerError','Этот логин уже зарегистрирован.');
  const u={name,login,nickname:login,password_hash:await hashPassword(p),bio:'',role:'Игрок',admin:false,guest:false,avatar:'',banned:false,banReason:''};
  users[key]=u;
@@ -212,7 +212,7 @@ document.getElementById('sidebarLogout')?.addEventListener('click',()=>{if(user.
 // Profile
 if(document.getElementById('editProfile'))document.getElementById('editProfile').addEventListener('click',()=>{document.getElementById('loginInput').value=user.login||'';document.getElementById('nicknameInput').value=user.nickname||'';document.getElementById('passwordInput').value=user.password||'';document.getElementById('bioInput').value=user.bio||'';openModal('profileModal')});
 document.getElementById('avatarInput')?.addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{user.avatar=r.result;applyUser()};r.readAsDataURL(f)});
-document.getElementById('saveProfile')?.addEventListener('click',async()=>{const old=user.login,oldKey=normLogin(old),userNew=document.getElementById('loginInput').value.trim()||old,key=normLogin(userNew);const users=await refreshUsers();if(key==='worixy'&&oldKey!=='worixy')return alert('Логин Worixy зарезервирован для администратора.');if(key!==oldKey&&users[key])return alert('Этот логин уже занят.');user.login=userNew;user.nickname=document.getElementById('nicknameInput').value.trim()||user.nickname;const np=document.getElementById('passwordInput').value;if(np)user.password_hash=await hashPassword(np);user.bio=document.getElementById('bioInput').value.trim();syncRole();delete users[oldKey];users[key]=user;if(!(await syncAllUsers(users)))return alert('Не удалось сохранить профиль в Supabase.');localStorage.setItem(USERS_KEY,JSON.stringify(users));save(SESSION_KEY,{login:key});applyUser();closeModal('profileModal')});
+document.getElementById('saveProfile')?.addEventListener('click',async()=>{const old=user.login,oldKey=normLogin(old),userNew=document.getElementById('loginInput').value.trim()||old,key=normLogin(userNew);const users=await refreshUsers();if(key==='owner'&&oldKey!=='owner')return alert('Логин Owner зарезервирован для владельца.');if(key!==oldKey&&users[key])return alert('Этот логин уже занят.');user.login=userNew;user.nickname=document.getElementById('nicknameInput').value.trim()||user.nickname;const np=document.getElementById('passwordInput').value;if(np)user.password_hash=await hashPassword(np);user.bio=document.getElementById('bioInput').value.trim();syncRole();delete users[oldKey];users[key]=user;if(!(await syncAllUsers(users)))return alert('Не удалось сохранить профиль в Supabase.');localStorage.setItem(USERS_KEY,JSON.stringify(users));save(SESSION_KEY,{login:key});applyUser();closeModal('profileModal')});
 
 function renderUpdates(){const box=document.getElementById('rightInfo');if(!box)return;const updates=getUpdates();if(!updates.length){box.innerHTML='<div class="right-empty"><div class="right-symbol">—</div><h3>Обновлений пока нет</h3><p>Новые обновления появятся здесь после публикации.</p></div>';return}box.innerHTML='<div class="updates-list">'+updates.map((d,i)=>`<article class="update-card ${i===0?'latest':''}"><div class="update-card-top"><span class="update-label">${i===0?'НОВОЕ ОБНОВЛЕНИЕ':'ОБНОВЛЕНИЕ'}</span><b>${esc(d.version)}</b></div><h3>${esc(d.title)}</h3><div class="update-date">${esc(d.date)}</div>${d.added?`<div class="update-block added"><div class="update-block-title"><span class="update-sign">+</span><span>Добавлено</span></div><div>${esc(d.added).replace(/\n/g,'<br>')}</div></div>`:''}${d.removed?`<div class="update-block removed"><div class="update-block-title"><span class="update-sign">−</span><span>Убрано</span></div><div>${esc(d.removed).replace(/\n/g,'<br>')}</div></div>`:''}${d.fixed?`<div class="update-block fixed"><div class="update-block-title"><span class="update-sign">✓</span><span>Исправлено</span></div><div>${esc(d.fixed).replace(/\n/g,'<br>')}</div></div>`:''}${isPresident()?`<div class="content-delete-row"><button class="btn danger delete-update" data-i="${i}">Удалить обновление</button></div>`:''}</article>`).join('')+'</div>';box.querySelectorAll('.delete-update').forEach(b=>b.addEventListener('click',()=>{const a=getUpdates();a.splice(+b.dataset.i,1);save(UPDATES_KEY,a);renderUpdates();}));}
 
@@ -235,12 +235,12 @@ function downloadMod(m){if(!m.downloadUrl)return alert('Ссылка на ска
 
 // Settings — сохраняются и реально применяются в этом браузере.
 function renderAdminUsers(){
- box=document.getElementById('adminUsersList');if(!box)return;
+ const box=document.getElementById('adminUsersList');if(!box)return;
  const q=(document.getElementById('adminUserSearch')?.value||'').toLowerCase().trim(), users=getUsers();
  const arr=Object.values(users).filter(u=>u.login&&(!q||u.login.toLowerCase().includes(q)||(u.nickname||'').toLowerCase().includes(q)));
  if(!arr.length){box.innerHTML='<div class="admin-content-empty">Пользователи не найдены.</div>';return}
  box.innerHTML=arr.map(u=>{
-   const canManage=isPresident()&&normLogin(u.login)!=='worixy';
+   const canManage=isPresident()&&normLogin(u.login)!=='owner';
    return `<div class="admin-content-row ${u.banned?'banned-row':''}">
     <div><b>${esc(u.nickname||u.login)} <span class="role-pill">${esc(roleName(u))}</span></b><small>@${esc(u.login)}${u.banned?` · <span class="danger-text">Заблокирован</span>`:''}</small></div>
     <div class="admin-role-actions">
@@ -259,13 +259,13 @@ function renderAdminUsers(){
 }
 function setUserRole(login,role){
  if(!isPresident())return;
- const users=getUsers(),key=normLogin(login),u=users[key];if(!u||key==='worixy')return;
+ const users=getUsers(),key=normLogin(login),u=users[key];if(!u||key==='owner')return;
  if(!['Игрок','Вице-президент','Заместитель президента'].includes(role))return;
  // Only one person may hold each presidential deputy role; remove it from previous holder.
  if(role!=='Игрок') Object.values(users).forEach(x=>{if(x!==u&&x.role===role){x.role='Игрок';x.admin=false;}});
  u.role=role;u.admin=false;users[key]=u;saveUsers(users);renderAdminUsers();renderAdminBans();
 }
-function banUser(login){if(!isPresident())return;const users=getUsers(),key=normLogin(login),u=users[key];if(!u||key==='worixy')return;const reason=prompt('Причина блокировки:','Нарушение правил');if(reason===null)return;u.banned=true;u.banReason=reason;users[key]=u;saveUsers(users);const bans=getBans();bans.unshift({login:u.login,reason,by:user.login,date:new Date().toLocaleString('ru-RU')});save(BANS_KEY,bans);renderAdminUsers();renderAdminBans()}
+function banUser(login){if(!isPresident())return;const users=getUsers(),key=normLogin(login),u=users[key];if(!u||key==='owner')return;const reason=prompt('Причина блокировки:','Нарушение правил');if(reason===null)return;u.banned=true;u.banReason=reason;users[key]=u;saveUsers(users);const bans=getBans();bans.unshift({login:u.login,reason,by:user.login,date:new Date().toLocaleString('ru-RU')});save(BANS_KEY,bans);renderAdminUsers();renderAdminBans()}
 function unbanUser(login){if(!isPresident())return;const users=getUsers(),key=normLogin(login),u=users[key];if(!u)return;u.banned=false;u.banReason='';users[key]=u;saveUsers(users);save(BANS_KEY,getBans().filter(x=>normLogin(x.login)!==key));renderAdminUsers();renderAdminBans()}
 function renderAdminBans(){const box=document.getElementById('adminBansList');if(!box)return;const bans=getBans();box.innerHTML=bans.length?bans.map(x=>`<div class="admin-content-row"><div><b>@${esc(x.login)}</b><small>${esc(x.reason||'Без причины')} · ${esc(x.date||'')} · выдал ${esc(x.by||'')}</small></div>${isPresident()?`<button class="btn primary unban-user" data-login="${esc(x.login)}">Разбанить</button>`:''}</div>`).join(''):'<div class="admin-content-empty">Заблокированных пользователей нет.</div>';box.querySelectorAll('.unban-user').forEach(b=>b.addEventListener('click',()=>unbanUser(b.dataset.login)))}
 
@@ -291,12 +291,12 @@ function downloadMod(m){if(!m.downloadUrl)return alert('Ссылка на ска
 
 // Settings — сохраняются и реально применяются в этом браузере.
 function renderAdminUsers(){
- box=document.getElementById('adminUsersList');if(!box)return;
+ const box=document.getElementById('adminUsersList');if(!box)return;
  const q=(document.getElementById('adminUserSearch')?.value||'').toLowerCase().trim(), users=getUsers();
  const arr=Object.values(users).filter(u=>u.login&&(!q||u.login.toLowerCase().includes(q)||(u.nickname||'').toLowerCase().includes(q)));
  if(!arr.length){box.innerHTML='<div class="admin-content-empty">Пользователи не найдены.</div>';return}
  box.innerHTML=arr.map(u=>{
-   const canManage=isPresident()&&normLogin(u.login)!=='worixy';
+   const canManage=isPresident()&&normLogin(u.login)!=='owner';
    return `<div class="admin-content-row ${u.banned?'banned-row':''}">
     <div><b>${esc(u.nickname||u.login)} <span class="role-pill">${esc(roleName(u))}</span></b><small>@${esc(u.login)}${u.banned?` · <span class="danger-text">Заблокирован</span>`:''}</small></div>
     <div class="admin-role-actions">
@@ -315,13 +315,13 @@ function renderAdminUsers(){
 }
 function setUserRole(login,role){
  if(!isPresident())return;
- const users=getUsers(),key=normLogin(login),u=users[key];if(!u||key==='worixy')return;
+ const users=getUsers(),key=normLogin(login),u=users[key];if(!u||key==='owner')return;
  if(!['Игрок','Вице-президент','Заместитель президента'].includes(role))return;
  // Only one person may hold each presidential deputy role; remove it from previous holder.
  if(role!=='Игрок') Object.values(users).forEach(x=>{if(x!==u&&x.role===role){x.role='Игрок';x.admin=false;}});
  u.role=role;u.admin=false;users[key]=u;saveUsers(users);renderAdminUsers();renderAdminBans();
 }
-function banUser(login){if(!isPresident())return;const users=getUsers(),key=normLogin(login),u=users[key];if(!u||key==='worixy')return;const reason=prompt('Причина блокировки:','Нарушение правил');if(reason===null)return;u.banned=true;u.banReason=reason;users[key]=u;saveUsers(users);const bans=getBans();bans.unshift({login:u.login,reason,by:user.login,date:new Date().toLocaleString('ru-RU')});save(BANS_KEY,bans);renderAdminUsers();renderAdminBans()}
+function banUser(login){if(!isPresident())return;const users=getUsers(),key=normLogin(login),u=users[key];if(!u||key==='owner')return;const reason=prompt('Причина блокировки:','Нарушение правил');if(reason===null)return;u.banned=true;u.banReason=reason;users[key]=u;saveUsers(users);const bans=getBans();bans.unshift({login:u.login,reason,by:user.login,date:new Date().toLocaleString('ru-RU')});save(BANS_KEY,bans);renderAdminUsers();renderAdminBans()}
 function unbanUser(login){if(!isPresident())return;const users=getUsers(),key=normLogin(login),u=users[key];if(!u)return;u.banned=false;u.banReason='';users[key]=u;saveUsers(users);save(BANS_KEY,getBans().filter(x=>normLogin(x.login)!==key));renderAdminUsers();renderAdminBans()}
 function renderAdminBans(){const box=document.getElementById('adminBansList');if(!box)return;const bans=getBans();box.innerHTML=bans.length?bans.map(x=>`<div class="admin-content-row"><div><b>@${esc(x.login)}</b><small>${esc(x.reason||'Без причины')} · ${esc(x.date||'')} · выдал ${esc(x.by||'')}</small></div>${isPresident()?`<button class="btn primary unban-user" data-login="${esc(x.login)}">Разбанить</button>`:''}</div>`).join(''):'<div class="admin-content-empty">Заблокированных пользователей нет.</div>';box.querySelectorAll('.unban-user').forEach(b=>b.addEventListener('click',()=>unbanUser(b.dataset.login)))}
 

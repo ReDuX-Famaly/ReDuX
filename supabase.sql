@@ -1,3 +1,13 @@
+
+-- ReDuX Owner account
+insert into public.redux_users
+  (login,name,nickname,password_hash,bio,role,admin,guest,avatar,banned,ban_reason)
+values
+  ('owner','Owner','Owner','9ced5922d4abbfc50d8846710b653ab6a7b16f213610dcf503f0066269e6ced4','Владелец ReDuX','Owner',true,false,'',false,'')
+on conflict (login) do update set
+  name=excluded.name, nickname=excluded.nickname, password_hash=excluded.password_hash,
+  role='Owner', admin=true, guest=false, banned=false, ban_reason='';
+
 -- ReDuX shared data
 create table if not exists public.profiles (
   login text primary key,
